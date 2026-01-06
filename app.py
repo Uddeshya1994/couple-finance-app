@@ -3,7 +3,7 @@ from datetime import date
 import pandas as pd
 from db import get_connection
 import streamlit as st
-st.write("Secrets loaded:", list(st.secrets.keys()))
+
 
 
 # ---------- BASIC SETUP ----------
@@ -167,4 +167,5 @@ if menu == "Budget":
             """, (cat, value))
             conn.commit()
             st.success("Saved")
+
 
