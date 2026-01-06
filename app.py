@@ -1,10 +1,10 @@
 import streamlit as st
 from datetime import date
 import pandas as pd
+from db import get_connection   # ✅ FIX 1
 
 # ---------- BASIC SETUP ----------
 st.set_page_config(page_title="Couple Finance App", layout="centered")
-
 
 conn = get_connection()
 cur = conn.cursor()
@@ -38,13 +38,13 @@ if menu == "Dashboard":
     st.header("📊 Monthly Dashboard")
 
     cur.execute(
-        "SELECT SUM(amount) FROM expenses WHERE date LIKE ?",
-        (f"{selected_month}%",)
+        "SELECT COALESCE(SUM(amount),0) FROM expenses WHERE to_char(date,'YYYY-MM') = %s",
+        (selected_month,)
     )
-    total_spent = cur.fetchone()[0] or 0
+    total_spent = cur.fetchone()[0]
 
-    cur.execute("SELECT SUM(monthly_budget) FROM budget")
-    total_budget = cur.fetchone()[0] or 0
+    cur.execute("SELECT COALESCE(SUM(monthly_budget),0) FROM budget")
+    total_budget = cur.fetchone()[0]
 
     balance = total_budget - total_spent
 
@@ -63,9 +63,9 @@ if menu == "Dashboard":
     cur.execute("""
         SELECT category, SUM(amount)
         FROM expenses
-        WHERE date LIKE ?
+        WHERE to_char(date,'YYYY-MM') = %s
         GROUP BY category
-    """, (f"{selected_month}%",))
+    """, (selected_month,))
 
     data = cur.fetchall()
 
@@ -79,12 +79,7 @@ if menu == "Dashboard":
 if menu == "Add Expense":
     st.header("⚡ Quick Add Expense")
 
-    amount = st.number_input(
-        "Amount (₹)",
-        min_value=1.0,
-        step=10.0,
-        format="%.0f"
-    )
+    amount = st.number_input("Amount (₹)", min_value=1.0, step=10.0, format="%.0f")
 
     st.subheader("Category")
     cols = st.columns(4)
@@ -94,12 +89,7 @@ if menu == "Add Expense":
 
     category = st.session_state.get("selected_category")
 
-    paid_by = st.radio(
-        "Paid By",
-        USERS,
-        horizontal=True
-    )
-
+    paid_by = st.radio("Paid By", USERS, horizontal=True)
     notes = st.text_input("Note (optional)")
 
     if st.button("💾 Save Expense", use_container_width=True):
@@ -108,9 +98,9 @@ if menu == "Add Expense":
         else:
             cur.execute("""
                 INSERT INTO expenses (date, amount, category, paid_by, notes)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
             """, (
-                today.isoformat(),
+                today,
                 amount,
                 category,
                 paid_by,
@@ -129,9 +119,9 @@ if menu == "Expenses":
     cur.execute("""
         SELECT id, date, amount, category, paid_by, notes
         FROM expenses
-        WHERE date LIKE ?
+        WHERE to_char(date,'YYYY-MM') = %s
         ORDER BY date DESC
-    """, (f"{selected_month}%",))
+    """, (selected_month,))
 
     rows = cur.fetchall()
 
@@ -143,29 +133,23 @@ if menu == "Expenses":
 
             with st.expander(f"₹{amt} | {cat} | {d}"):
                 with st.form(key=f"form_{exp_id}"):
-                    new_date = st.date_input("Date", value=pd.to_datetime(d))
+                    new_date = st.date_input("Date", value=d)
                     new_amount = st.number_input("Amount", value=float(amt))
-                    new_category = st.selectbox(
-                        "Category", CATEGORIES, index=CATEGORIES.index(cat)
-                    )
-                    new_paid = st.selectbox(
-                        "Paid By", USERS, index=USERS.index(paid)
-                    )
+                    new_category = st.selectbox("Category", CATEGORIES, index=CATEGORIES.index(cat))
+                    new_paid = st.selectbox("Paid By", USERS, index=USERS.index(paid))
                     new_note = st.text_input("Notes", value=note or "")
 
                     col1, col2 = st.columns(2)
-                    with col1:
-                        update = st.form_submit_button("✏️ Update")
-                    with col2:
-                        delete = st.form_submit_button("🗑️ Delete")
+                    update = col1.form_submit_button("✏️ Update")
+                    delete = col2.form_submit_button("🗑️ Delete")
 
                     if update:
                         cur.execute("""
                             UPDATE expenses
-                            SET date=?, amount=?, category=?, paid_by=?, notes=?
-                            WHERE id=?
+                            SET date=%s, amount=%s, category=%s, paid_by=%s, notes=%s
+                            WHERE id=%s
                         """, (
-                            new_date.isoformat(),
+                            new_date,
                             new_amount,
                             new_category,
                             new_paid,
@@ -177,10 +161,7 @@ if menu == "Expenses":
                         st.rerun()
 
                     if delete:
-                        cur.execute(
-                            "DELETE FROM expenses WHERE id=?",
-                            (exp_id,)
-                        )
+                        cur.execute("DELETE FROM expenses WHERE id=%s", (exp_id,))
                         conn.commit()
                         st.warning("Expense deleted")
                         st.rerun()
@@ -190,10 +171,7 @@ if menu == "Budget":
     st.header("🎯 Monthly Budget")
 
     for cat in CATEGORIES:
-        cur.execute(
-            "SELECT monthly_budget FROM budget WHERE category=?",
-            (cat,)
-        )
+        cur.execute("SELECT monthly_budget FROM budget WHERE category=%s", (cat,))
         row = cur.fetchone()
         default_value = row[0] if row else 0.0
 
@@ -207,11 +185,9 @@ if menu == "Budget":
         if st.button(f"Save {cat}", key=f"btn_{cat}"):
             cur.execute("""
                 INSERT INTO budget (category, monthly_budget)
-                VALUES (?, ?)
-                ON CONFLICT(category)
-                DO UPDATE SET monthly_budget=excluded.monthly_budget
+                VALUES (%s, %s)
+                ON CONFLICT (category)
+                DO UPDATE SET monthly_budget = EXCLUDED.monthly_budget
             """, (cat, budget_value))
             conn.commit()
             st.success(f"{cat} budget saved")
-
-
