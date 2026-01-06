@@ -5,7 +5,7 @@ import pandas as pd
 
 # ---------- BASIC SETUP ----------
 st.set_page_config(page_title="Couple Finance App", layout="centered")
-create_tables()
+
 
 conn = get_connection()
 cur = conn.cursor()
@@ -214,3 +214,4 @@ if menu == "Budget":
             """, (cat, budget_value))
             conn.commit()
             st.success(f"{cat} budget saved")
+
