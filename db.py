@@ -1,41 +1,11 @@
-import sqlite3
-
-DB_NAME = "finance.db"
+import psycopg2
+import streamlit as st
 
 def get_connection():
-    return sqlite3.connect(DB_NAME, check_same_thread=False)
-
-def create_tables():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    # Expenses table
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS expenses (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT,
-        amount REAL,
-        category TEXT,
-        paid_by TEXT,
-        notes TEXT
+    return psycopg2.connect(
+        host=st.secrets["DB_HOST"],
+        database=st.secrets["DB_NAME"],
+        user=st.secrets["DB_USER"],
+        password=st.secrets["DB_PASSWORD"],
+        port=st.secrets["DB_PORT"]
     )
-    """)
-
-    # Budget table
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS budget (
-        category TEXT PRIMARY KEY,
-        monthly_budget REAL
-    )
-    """)
-
-    # Settings table
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT
-    )
-    """)
-
-    conn.commit()
-    conn.close()
