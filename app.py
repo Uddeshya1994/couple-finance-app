@@ -2,6 +2,9 @@ import streamlit as st
 from datetime import date
 import pandas as pd
 from db import get_connection
+import streamlit as st
+st.write("Secrets loaded:", list(st.secrets.keys()))
+
 
 # ---------- BASIC SETUP ----------
 st.set_page_config(page_title="Couple Finance App", layout="centered")
@@ -164,3 +167,4 @@ if menu == "Budget":
             """, (cat, value))
             conn.commit()
             st.success("Saved")
+
