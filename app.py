@@ -1,6 +1,5 @@
 import streamlit as st
 from datetime import date
-from db import create_tables, get_connection
 import pandas as pd
 
 # ---------- BASIC SETUP ----------
@@ -214,4 +213,5 @@ if menu == "Budget":
             """, (cat, budget_value))
             conn.commit()
             st.success(f"{cat} budget saved")
+
 
