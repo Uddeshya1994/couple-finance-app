@@ -1,7 +1,7 @@
 import streamlit as st
 from datetime import date
 import pandas as pd
-from db import get_connection   # ✅ FIX 1
+from db import get_connection
 
 # ---------- BASIC SETUP ----------
 st.set_page_config(page_title="Couple Finance App", layout="centered")
@@ -53,11 +53,6 @@ if menu == "Dashboard":
     col2.metric("Monthly Budget", f"₹{total_budget:.0f}")
     col3.metric("Remaining", f"₹{balance:.0f}", delta_color="inverse")
 
-    if balance < 0:
-        st.error("🚨 Budget exceeded for this month")
-    else:
-        st.success("✅ Within budget")
-
     st.subheader("📂 Category-wise Spend")
 
     cur.execute("""
@@ -68,7 +63,6 @@ if menu == "Dashboard":
     """, (selected_month,))
 
     data = cur.fetchall()
-
     if data:
         df = pd.DataFrame(data, columns=["Category", "Amount"])
         st.bar_chart(df.set_index("Category"))
@@ -99,20 +93,13 @@ if menu == "Add Expense":
             cur.execute("""
                 INSERT INTO expenses (date, amount, category, paid_by, notes)
                 VALUES (%s, %s, %s, %s, %s)
-            """, (
-                today,
-                amount,
-                category,
-                paid_by,
-                notes
-            ))
+            """, (today, amount, category, paid_by, notes))
             conn.commit()
-
             st.session_state.pop("selected_category", None)
-            st.success("✅ Expense added")
+            st.success("Expense added")
             st.rerun()
 
-# ---------- EXPENSE LIST (EDIT / DELETE) ----------
+# ---------- EXPENSE LIST ----------
 if menu == "Expenses":
     st.header("📋 Expense List")
 
@@ -124,13 +111,11 @@ if menu == "Expenses":
     """, (selected_month,))
 
     rows = cur.fetchall()
-
     if not rows:
-        st.info("No expenses found for this month")
+        st.info("No expenses found")
     else:
         for r in rows:
             exp_id, d, amt, cat, paid, note = r
-
             with st.expander(f"₹{amt} | {cat} | {d}"):
                 with st.form(key=f"form_{exp_id}"):
                     new_date = st.date_input("Date", value=d)
@@ -148,22 +133,15 @@ if menu == "Expenses":
                             UPDATE expenses
                             SET date=%s, amount=%s, category=%s, paid_by=%s, notes=%s
                             WHERE id=%s
-                        """, (
-                            new_date,
-                            new_amount,
-                            new_category,
-                            new_paid,
-                            new_note,
-                            exp_id
-                        ))
+                        """, (new_date, new_amount, new_category, new_paid, new_note, exp_id))
                         conn.commit()
-                        st.success("Expense updated")
+                        st.success("Updated")
                         st.rerun()
 
                     if delete:
                         cur.execute("DELETE FROM expenses WHERE id=%s", (exp_id,))
                         conn.commit()
-                        st.warning("Expense deleted")
+                        st.warning("Deleted")
                         st.rerun()
 
 # ---------- BUDGET ----------
@@ -173,14 +151,9 @@ if menu == "Budget":
     for cat in CATEGORIES:
         cur.execute("SELECT monthly_budget FROM budget WHERE category=%s", (cat,))
         row = cur.fetchone()
-        default_value = row[0] if row else 0.0
+        default = row[0] if row else 0.0
 
-        budget_value = st.number_input(
-            f"{cat} Budget (₹)",
-            min_value=0.0,
-            value=float(default_value),
-            key=cat
-        )
+        value = st.number_input(f"{cat} Budget (₹)", min_value=0.0, value=float(default), key=cat)
 
         if st.button(f"Save {cat}", key=f"btn_{cat}"):
             cur.execute("""
@@ -188,6 +161,6 @@ if menu == "Budget":
                 VALUES (%s, %s)
                 ON CONFLICT (category)
                 DO UPDATE SET monthly_budget = EXCLUDED.monthly_budget
-            """, (cat, budget_value))
+            """, (cat, value))
             conn.commit()
-            st.success(f"{cat} budget saved")
+            st.success("Saved")
