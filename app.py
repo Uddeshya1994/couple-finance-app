@@ -4,14 +4,6 @@ import pandas as pd
 from db import get_connection
 from io import BytesIO
 
-def export_excel(expenses_df, budget_df):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        expenses_df.to_excel(writer, sheet_name="Expenses", index=False)
-        budget_df.to_excel(writer, sheet_name="Budget", index=False)
-    output.seek(0)
-    return output
-
 # ---------- BASIC SETUP ----------
 st.set_page_config(page_title="Couple Finance App", layout="centered")
 
@@ -33,8 +25,21 @@ conn = get_db()
 cur = conn.cursor()
 
 USERS = ["Uddeshya", "Megha"]
-CATEGORIES = ["Food", "Travel", "EMI", "Shopping", "Fun", "Medical", "Other"]
 
+# ---------- HELPERS ----------
+def get_categories():
+    cur.execute("SELECT name FROM categories ORDER BY name")
+    return [row[0] for row in cur.fetchall()]
+
+def export_excel(expenses_df, budget_df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        expenses_df.to_excel(writer, sheet_name="Expenses", index=False)
+        budget_df.to_excel(writer, sheet_name="Budget", index=False)
+    output.seek(0)
+    return output
+
+# ---------- TITLE ----------
 st.title("💰 Couple Finance & Expense App")
 
 # ---------- MONTH SELECTOR ----------
@@ -53,10 +58,12 @@ selected_month = st.sidebar.selectbox(
 # ---------- SIDEBAR MENU ----------
 menu = st.sidebar.selectbox(
     "Menu",
-    ["Add Expense","Dashboard", "Expenses", "Budget", "Export Data"]
+    ["Add Expense", "Dashboard", "Expenses", "Budget", "Export Data"]
 )
 
-# ---------- DASHBOARD ----------
+# ======================================================
+# 📊 DASHBOARD
+# ======================================================
 if menu == "Dashboard":
     st.header("📊 Monthly Dashboard")
 
@@ -92,7 +99,9 @@ if menu == "Dashboard":
     else:
         st.info("No expenses for this month")
 
-# ---------- QUICK ADD EXPENSE ----------
+# ======================================================
+# ⚡ ADD EXPENSE
+# ======================================================
 if menu == "Add Expense":
     st.subheader("👋 Quick entry – add expense first")
     st.header("⚡ Quick Add Expense")
@@ -100,8 +109,10 @@ if menu == "Add Expense":
     amount = st.number_input("Amount (₹)", min_value=1.0, step=10.0, format="%.0f")
 
     st.subheader("Category")
+    categories = get_categories()
+
     cols = st.columns(4)
-    for i, cat in enumerate(CATEGORIES):
+    for i, cat in enumerate(categories):
         if cols[i % 4].button(cat):
             st.session_state["selected_category"] = cat
 
@@ -123,7 +134,9 @@ if menu == "Add Expense":
             st.success("Expense added")
             st.rerun()
 
-# ---------- EXPENSE LIST ----------
+# ======================================================
+# 📋 EXPENSE LIST (EDIT / DELETE)
+# ======================================================
 if menu == "Expenses":
     st.header("📋 Expense List")
 
@@ -135,16 +148,24 @@ if menu == "Expenses":
     """, (selected_month,))
 
     rows = cur.fetchall()
+    categories = get_categories()
+
     if not rows:
         st.info("No expenses found")
     else:
         for r in rows:
             exp_id, d, amt, cat, paid, note = r
+
             with st.expander(f"₹{amt} | {cat} | {d}"):
                 with st.form(key=f"form_{exp_id}"):
+
                     new_date = st.date_input("Date", value=d)
                     new_amount = st.number_input("Amount", value=float(amt))
-                    new_category = st.selectbox("Category", CATEGORIES, index=CATEGORIES.index(cat))
+                    new_category = st.selectbox(
+                        "Category",
+                        categories,
+                        index=categories.index(cat) if cat in categories else 0
+                    )
                     new_paid = st.selectbox("Paid By", USERS, index=USERS.index(paid))
                     new_note = st.text_input("Notes", value=note or "")
 
@@ -168,16 +189,25 @@ if menu == "Expenses":
                         st.warning("Deleted")
                         st.rerun()
 
-# ---------- BUDGET ----------
+# ======================================================
+# 🎯 BUDGET + CATEGORY MANAGEMENT
+# ======================================================
 if menu == "Budget":
     st.header("🎯 Monthly Budget")
 
-    for cat in CATEGORIES:
+    categories = get_categories()
+
+    for cat in categories:
         cur.execute("SELECT monthly_budget FROM budget WHERE category=%s", (cat,))
         row = cur.fetchone()
         default = row[0] if row else 0.0
 
-        value = st.number_input(f"{cat} Budget (₹)", min_value=0.0, value=float(default), key=cat)
+        value = st.number_input(
+            f"{cat} Budget (₹)",
+            min_value=0.0,
+            value=float(default),
+            key=f"budget_{cat}"
+        )
 
         if st.button(f"Save {cat}", key=f"btn_{cat}"):
             cur.execute("""
@@ -187,36 +217,54 @@ if menu == "Budget":
                 DO UPDATE SET monthly_budget = EXCLUDED.monthly_budget
             """, (cat, value))
             conn.commit()
-            st.success("Saved")
-# ---------- EXPORT ALL DATA ----------
+            st.success(f"{cat} budget saved")
+
+    st.divider()
+    st.subheader("🛠️ Manage Categories")
+
+    new_cat = st.text_input("Add new category")
+    if st.button("➕ Add Category"):
+        if new_cat:
+            try:
+                cur.execute("INSERT INTO categories (name) VALUES (%s)", (new_cat,))
+                conn.commit()
+                st.success("Category added")
+                st.rerun()
+            except:
+                st.warning("Category already exists")
+
+    del_cat = st.selectbox("Delete category", categories)
+    if st.button("🗑️ Delete Category"):
+        cur.execute("DELETE FROM categories WHERE name=%s", (del_cat,))
+        conn.commit()
+        st.warning(f"{del_cat} deleted")
+        st.rerun()
+
+# ======================================================
+# 📤 EXPORT ALL DATA
+# ======================================================
 if menu == "Export Data":
     st.header("📤 Export All Data")
 
     st.info("This will export ALL expenses and budgets into a single Excel file.")
 
-    # Fetch all expenses
     cur.execute("""
         SELECT date, amount, category, paid_by, notes
         FROM expenses
         ORDER BY date
     """)
-    expenses_rows = cur.fetchall()
-
     expenses_df = pd.DataFrame(
-        expenses_rows,
+        cur.fetchall(),
         columns=["Date", "Amount", "Category", "Paid By", "Notes"]
     )
 
-    # Fetch budget
     cur.execute("""
         SELECT category, monthly_budget
         FROM budget
         ORDER BY category
     """)
-    budget_rows = cur.fetchall()
-
     budget_df = pd.DataFrame(
-        budget_rows,
+        cur.fetchall(),
         columns=["Category", "Monthly Budget"]
     )
 
@@ -231,9 +279,3 @@ if menu == "Export Data":
             file_name="couple_finance_all_data.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
-
-
-
-
-
