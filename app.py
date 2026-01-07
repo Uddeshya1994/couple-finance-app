@@ -5,48 +5,12 @@ from db import get_connection
 from io import BytesIO
 import re
 
-def parse_expense_text(text, categories, users):
-    text = text.lower()
-
-    # Amount
-    amount_match = re.search(r'\b(\d+)\b', text)
-    amount = float(amount_match.group(1)) if amount_match else None
-
-    # Paid by
-    paid_by = None
-    for user in users:
-        if user.lower() in text:
-            paid_by = user
-            break
-
-    # Category
-    category = None
-    for cat in categories:
-        if cat.lower() in text:
-            category = cat
-            break
-
-    # Fallback keyword-based category
-    if not category:
-        if any(x in text for x in ["uber", "ola", "bus", "train", "cab"]):
-            category = "Travel"
-        elif any(x in text for x in ["food", "pizza", "swiggy", "zomato"]):
-            category = "Food"
-        elif any(x in text for x in ["medicine", "doctor", "hospital"]):
-            category = "Medical"
-        else:
-            category = "Other"
-
-    # Notes
-    notes = text
-
-    return amount, category, paid_by, notes
-
-
-# ---------- BASIC SETUP ----------
+# ======================================================
+# BASIC SETUP
+# ======================================================
 st.set_page_config(page_title="Couple Finance App", layout="centered")
 
-# ---------- UI TWEAKS ----------
+# UI tweaks
 st.markdown("""
     <style>
         [data-testid="stSidebar"] {
@@ -55,7 +19,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ---------- DB CONNECTION ----------
+# ======================================================
+# DB CONNECTION
+# ======================================================
 @st.cache_resource
 def get_db():
     return get_connection()
@@ -65,7 +31,9 @@ cur = conn.cursor()
 
 USERS = ["Uddeshya", "Megha"]
 
-# ---------- HELPERS ----------
+# ======================================================
+# HELPERS
+# ======================================================
 def get_categories():
     cur.execute("SELECT name FROM categories ORDER BY name")
     return [row[0] for row in cur.fetchall()]
@@ -78,10 +46,61 @@ def export_excel(expenses_df, budget_df):
     output.seek(0)
     return output
 
-# ---------- TITLE ----------
+def parse_expense_text(text, categories, users):
+    t = text.lower()
+
+    # Amount
+    amount = None
+    m = re.search(r'\b(\d+)\b', t)
+    if m:
+        amount = float(m.group(1))
+
+    # Paid by
+    paid_by = None
+    for u in users:
+        if u.lower() in t:
+            paid_by = u
+            break
+
+    # Category (explicit)
+    category = None
+    for c in categories:
+        if c.lower() in t:
+            category = c
+            break
+
+    # Fallback category
+    if not category:
+        if any(x in t for x in ["uber", "ola", "cab", "train", "bus"]):
+            category = "Travel"
+        elif any(x in t for x in ["food", "pizza", "swiggy", "zomato", "chai"]):
+            category = "Food"
+        elif any(x in t for x in ["medicine", "doctor", "hospital"]):
+            category = "Medical"
+        elif any(x in t for x in ["amazon", "flipkart", "shopping"]):
+            category = "Shopping"
+        else:
+            category = "Other"
+
+    return amount, category, paid_by, text
+
+# ======================================================
+# CHAT STATE
+# ======================================================
+if "chat_messages" not in st.session_state:
+    st.session_state.chat_messages = []
+
+if "pending_expense" not in st.session_state:
+    st.session_state.pending_expense = None
+
+# ======================================================
+# TITLE
+# ======================================================
 st.title("💰 Couple Finance & Expense App")
 
-# ---------- MONTH SELECTOR ----------
+# ======================================================
+# MONTH SELECTOR
+# ======================================================
 today = date.today()
 months = pd.date_range(
     start="2024-01-01",
@@ -94,14 +113,16 @@ selected_month = st.sidebar.selectbox(
     sorted(months, reverse=True)
 )
 
-# ---------- SIDEBAR MENU ----------
+# ======================================================
+# SIDEBAR MENU
+# ======================================================
 menu = st.sidebar.selectbox(
     "Menu",
-    ["Add Expense", "Dashboard", "Expenses", "Budget","AI Chat", "Export Data"]
+    ["Add Expense", "Dashboard", "Expenses", "Budget", "AI Chat", "Export Data"]
 )
 
 # ======================================================
-# 📊 DASHBOARD
+# DASHBOARD
 # ======================================================
 if menu == "Dashboard":
     st.header("📊 Monthly Dashboard")
@@ -117,10 +138,10 @@ if menu == "Dashboard":
 
     balance = total_budget - total_spent
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Spent", f"₹{total_spent:.0f}")
-    col2.metric("Monthly Budget", f"₹{total_budget:.0f}")
-    col3.metric("Remaining", f"₹{balance:.0f}", delta_color="inverse")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Spent", f"₹{total_spent:.0f}")
+    c2.metric("Monthly Budget", f"₹{total_budget:.0f}")
+    c3.metric("Remaining", f"₹{balance:.0f}", delta_color="inverse")
 
     st.subheader("📂 Category-wise Spend")
 
@@ -130,8 +151,8 @@ if menu == "Dashboard":
         WHERE to_char(date,'YYYY-MM') = %s
         GROUP BY category
     """, (selected_month,))
-
     data = cur.fetchall()
+
     if data:
         df = pd.DataFrame(data, columns=["Category", "Amount"])
         st.bar_chart(df.set_index("Category"))
@@ -139,7 +160,7 @@ if menu == "Dashboard":
         st.info("No expenses for this month")
 
 # ======================================================
-# ⚡ ADD EXPENSE
+# ADD EXPENSE
 # ======================================================
 if menu == "Add Expense":
     st.subheader("👋 Quick entry – add expense first")
@@ -149,14 +170,13 @@ if menu == "Add Expense":
 
     st.subheader("Category")
     categories = get_categories()
-
     cols = st.columns(4)
+
     for i, cat in enumerate(categories):
         if cols[i % 4].button(cat):
             st.session_state["selected_category"] = cat
 
     category = st.session_state.get("selected_category")
-
     paid_by = st.radio("Paid By", USERS, horizontal=True)
     notes = st.text_input("Note (optional)")
 
@@ -174,7 +194,7 @@ if menu == "Add Expense":
             st.rerun()
 
 # ======================================================
-# 📋 EXPENSE LIST (EDIT / DELETE)
+# EXPENSE LIST
 # ======================================================
 if menu == "Expenses":
     st.header("📋 Expense List")
@@ -185,7 +205,6 @@ if menu == "Expenses":
         WHERE to_char(date,'YYYY-MM') = %s
         ORDER BY date DESC
     """, (selected_month,))
-
     rows = cur.fetchall()
     categories = get_categories()
 
@@ -194,10 +213,8 @@ if menu == "Expenses":
     else:
         for r in rows:
             exp_id, d, amt, cat, paid, note = r
-
             with st.expander(f"₹{amt} | {cat} | {d}"):
                 with st.form(key=f"form_{exp_id}"):
-
                     new_date = st.date_input("Date", value=d)
                     new_amount = st.number_input("Amount", value=float(amt))
                     new_category = st.selectbox(
@@ -208,11 +225,8 @@ if menu == "Expenses":
                     new_paid = st.selectbox("Paid By", USERS, index=USERS.index(paid))
                     new_note = st.text_input("Notes", value=note or "")
 
-                    col1, col2 = st.columns(2)
-                    update = col1.form_submit_button("✏️ Update")
-                    delete = col2.form_submit_button("🗑️ Delete")
-
-                    if update:
+                    c1, c2 = st.columns(2)
+                    if c1.form_submit_button("✏️ Update"):
                         cur.execute("""
                             UPDATE expenses
                             SET date=%s, amount=%s, category=%s, paid_by=%s, notes=%s
@@ -222,29 +236,28 @@ if menu == "Expenses":
                         st.success("Updated")
                         st.rerun()
 
-                    if delete:
+                    if c2.form_submit_button("🗑️ Delete"):
                         cur.execute("DELETE FROM expenses WHERE id=%s", (exp_id,))
                         conn.commit()
                         st.warning("Deleted")
                         st.rerun()
 
 # ======================================================
-# 🎯 BUDGET + CATEGORY MANAGEMENT
+# BUDGET + CATEGORY MANAGEMENT
 # ======================================================
 if menu == "Budget":
     st.header("🎯 Monthly Budget")
-
     categories = get_categories()
 
     for cat in categories:
         cur.execute("SELECT monthly_budget FROM budget WHERE category=%s", (cat,))
         row = cur.fetchone()
-        default = row[0] if row else 0.0
+        value = row[0] if row else 0.0
 
-        value = st.number_input(
+        new_val = st.number_input(
             f"{cat} Budget (₹)",
             min_value=0.0,
-            value=float(default),
+            value=float(value),
             key=f"budget_{cat}"
         )
 
@@ -254,23 +267,22 @@ if menu == "Budget":
                 VALUES (%s, %s)
                 ON CONFLICT (category)
                 DO UPDATE SET monthly_budget = EXCLUDED.monthly_budget
-            """, (cat, value))
+            """, (cat, new_val))
             conn.commit()
-            st.success(f"{cat} budget saved")
+            st.success(f"{cat} saved")
 
     st.divider()
     st.subheader("🛠️ Manage Categories")
 
     new_cat = st.text_input("Add new category")
     if st.button("➕ Add Category"):
-        if new_cat:
-            try:
-                cur.execute("INSERT INTO categories (name) VALUES (%s)", (new_cat,))
-                conn.commit()
-                st.success("Category added")
-                st.rerun()
-            except:
-                st.warning("Category already exists")
+        try:
+            cur.execute("INSERT INTO categories (name) VALUES (%s)", (new_cat,))
+            conn.commit()
+            st.success("Category added")
+            st.rerun()
+        except:
+            st.warning("Category already exists")
 
     del_cat = st.selectbox("Delete category", categories)
     if st.button("🗑️ Delete Category"):
@@ -280,77 +292,95 @@ if menu == "Budget":
         st.rerun()
 
 # ======================================================
-# 📤 EXPORT ALL DATA
+# EXPORT ALL DATA
 # ======================================================
 if menu == "Export Data":
     st.header("📤 Export All Data")
 
-    st.info("This will export ALL expenses and budgets into a single Excel file.")
-
-    cur.execute("""
-        SELECT date, amount, category, paid_by, notes
-        FROM expenses
-        ORDER BY date
-    """)
+    cur.execute("SELECT date, amount, category, paid_by, notes FROM expenses ORDER BY date")
     expenses_df = pd.DataFrame(
         cur.fetchall(),
         columns=["Date", "Amount", "Category", "Paid By", "Notes"]
     )
 
-    cur.execute("""
-        SELECT category, monthly_budget
-        FROM budget
-        ORDER BY category
-    """)
+    cur.execute("SELECT category, monthly_budget FROM budget ORDER BY category")
     budget_df = pd.DataFrame(
         cur.fetchall(),
         columns=["Category", "Monthly Budget"]
     )
 
-    if expenses_df.empty and budget_df.empty:
-        st.warning("No data available to export.")
-    else:
+    if not expenses_df.empty or not budget_df.empty:
         excel_file = export_excel(expenses_df, budget_df)
-
         st.download_button(
-            label="⬇️ Download Excel (All Data)",
-            data=excel_file,
-            file_name="couple_finance_all_data.xlsx",
+            "⬇️ Download Excel (All Data)",
+            excel_file,
+            "couple_finance_all_data.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+    else:
+        st.info("No data to export")
 
 # ======================================================
-# 🤖 AI CHAT – ADD EXPENSE
+# AI CHAT – REAL CHATBOT PANEL
 # ======================================================
 if menu == "AI Chat":
-    st.header("🤖 Chat to Add Expense")
-    st.write("Type naturally like WhatsApp:")
+    st.header("🤖 Expense Chatbot")
+    st.caption("Type like WhatsApp → `450 uber paid by Megha`")
 
-    st.code("Spent 450 on uber paid by Megha")
+    for msg in st.session_state.chat_messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
-    user_text = st.text_input("💬 Your message")
+    user_input = st.chat_input("Type your expense...")
 
-    if st.button("➕ Add via Chat"):
-        categories = get_categories()
+    if user_input:
+        st.session_state.chat_messages.append({"role": "user", "content": user_input})
 
-        amount, category, paid_by, notes = parse_expense_text(
-            user_text, categories, USERS
-        )
+        cats = get_categories()
+        amt, cat, paid, notes = parse_expense_text(user_input, cats, USERS)
 
-        if not amount:
-            st.error("❌ Couldn't detect amount")
-        elif not paid_by:
-            st.error("❌ Couldn't detect who paid")
+        if not amt or not paid:
+            st.session_state.chat_messages.append({
+                "role": "assistant",
+                "content": "❌ Please include **amount** and **who paid**."
+            })
         else:
-            cur.execute("""
-                INSERT INTO expenses (date, amount, category, paid_by, notes)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (date.today(), amount, category, paid_by, notes))
-            conn.commit()
+            st.session_state.pending_expense = {
+                "amount": amt,
+                "category": cat,
+                "paid_by": paid,
+                "notes": notes
+            }
+            st.session_state.chat_messages.append({
+                "role": "assistant",
+                "content": (
+                    f"🧾 **I understood:**\n\n"
+                    f"- Amount: ₹{amt}\n"
+                    f"- Category: {cat}\n"
+                    f"- Paid by: {paid}\n\n"
+                    f"Reply **Yes** to save or **No** to cancel."
+                )
+            })
+        st.rerun()
 
-            st.success(
-                f"✅ Added ₹{amount} | {category} | Paid by {paid_by}"
-            )
+    if st.session_state.pending_expense:
+        confirm = st.chat_input("Type Yes or No")
+        if confirm:
+            if confirm.lower() == "yes":
+                e = st.session_state.pending_expense
+                cur.execute("""
+                    INSERT INTO expenses (date, amount, category, paid_by, notes)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (date.today(), e["amount"], e["category"], e["paid_by"], e["notes"]))
+                conn.commit()
+                st.session_state.chat_messages.append({
+                    "role": "assistant",
+                    "content": "✅ Expense saved!"
+                })
+            else:
+                st.session_state.chat_messages.append({
+                    "role": "assistant",
+                    "content": "❌ Cancelled."
+                })
+            st.session_state.pending_expense = None
             st.rerun()
-
-
