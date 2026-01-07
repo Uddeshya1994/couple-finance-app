@@ -74,6 +74,7 @@ if menu == "Dashboard":
 
 # ---------- QUICK ADD EXPENSE ----------
 if menu == "Add Expense":
+    st.subheader("👋 Quick entry – add expense first")
     st.header("⚡ Quick Add Expense")
 
     amount = st.number_input("Amount (₹)", min_value=1.0, step=10.0, format="%.0f")
@@ -167,6 +168,7 @@ if menu == "Budget":
             """, (cat, value))
             conn.commit()
             st.success("Saved")
+
 
 
 
