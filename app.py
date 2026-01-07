@@ -2,6 +2,15 @@ import streamlit as st
 from datetime import date
 import pandas as pd
 from db import get_connection
+from io import BytesIO
+
+def export_excel(expenses_df, budget_df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        expenses_df.to_excel(writer, sheet_name="Expenses", index=False)
+        budget_df.to_excel(writer, sheet_name="Budget", index=False)
+    output.seek(0)
+    return output
 
 # ---------- BASIC SETUP ----------
 st.set_page_config(page_title="Couple Finance App", layout="centered")
@@ -44,7 +53,7 @@ selected_month = st.sidebar.selectbox(
 # ---------- SIDEBAR MENU ----------
 menu = st.sidebar.selectbox(
     "Menu",
-    ["Add Expense","Dashboard", "Expenses", "Budget"]
+    ["Add Expense","Dashboard", "Expenses", "Budget", "Export Data"]
 )
 
 # ---------- DASHBOARD ----------
@@ -179,6 +188,49 @@ if menu == "Budget":
             """, (cat, value))
             conn.commit()
             st.success("Saved")
+# ---------- EXPORT ALL DATA ----------
+if menu == "Export Data":
+    st.header("📤 Export All Data")
+
+    st.info("This will export ALL expenses and budgets into a single Excel file.")
+
+    # Fetch all expenses
+    cur.execute("""
+        SELECT date, amount, category, paid_by, notes
+        FROM expenses
+        ORDER BY date
+    """)
+    expenses_rows = cur.fetchall()
+
+    expenses_df = pd.DataFrame(
+        expenses_rows,
+        columns=["Date", "Amount", "Category", "Paid By", "Notes"]
+    )
+
+    # Fetch budget
+    cur.execute("""
+        SELECT category, monthly_budget
+        FROM budget
+        ORDER BY category
+    """)
+    budget_rows = cur.fetchall()
+
+    budget_df = pd.DataFrame(
+        budget_rows,
+        columns=["Category", "Monthly Budget"]
+    )
+
+    if expenses_df.empty and budget_df.empty:
+        st.warning("No data available to export.")
+    else:
+        excel_file = export_excel(expenses_df, budget_df)
+
+        st.download_button(
+            label="⬇️ Download Excel (All Data)",
+            data=excel_file,
+            file_name="couple_finance_all_data.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 
 
