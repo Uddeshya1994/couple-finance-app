@@ -214,11 +214,10 @@ if menu == "Expenses":
                         st.rerun()
 
 # ======================================================
-# BUDGET + CATEGORY MANAGEMENT (CUSTOMIZABLE)
+# BUDGET + CATEGORY MANAGEMENT
 # ======================================================
 if menu == "Budget & Categories":
     st.header("🎯 Monthly Budget (Customizable)")
-
     categories = get_categories()
 
     for cat in categories:
@@ -281,7 +280,7 @@ if st.button(label, key="chat_toggle"):
     st.session_state.chat_open = not st.session_state.chat_open
 
 # ======================================================
-# CHATBOT – AUTO SAVE
+# CHATBOT – AUTO SAVE (FIXED INPUT)
 # ======================================================
 if st.session_state.chat_open:
     st.markdown('<div class="chat-panel">', unsafe_allow_html=True)
@@ -293,9 +292,15 @@ if st.session_state.chat_open:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    user_input = st.chat_input("Type expense...")
+    with st.form("chat_form", clear_on_submit=True):
+        user_input = st.text_input(
+            "Type expense",
+            placeholder="450 uber Megha",
+            label_visibility="collapsed"
+        )
+        send = st.form_submit_button("➤ Send")
 
-    if user_input:
+    if send and user_input:
         st.session_state.chat_messages.append({"role":"user","content":user_input})
 
         cats = get_categories()
@@ -317,6 +322,7 @@ if st.session_state.chat_open:
                 "role":"assistant",
                 "content":f"✅ Added ₹{amt} | {cat} | {paid}"
             })
+
         st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
