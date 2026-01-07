@@ -1,3 +1,12 @@
+st.markdown("""
+    <style>
+        [data-testid="stSidebar"] {
+            min-width: 200px;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+
 import streamlit as st
 from datetime import date
 import pandas as pd
@@ -168,6 +177,7 @@ if menu == "Budget":
             """, (cat, value))
             conn.commit()
             st.success("Saved")
+
 
 
 
