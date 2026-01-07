@@ -153,6 +153,7 @@ def export_excel(exp_df, bud_df):
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         exp_df.to_excel(writer, sheet_name="Expenses", index=False)
         bud_df.to_excel(writer, sheet_name="Budget", index=False)
+        inv_df.to_excel(writer, sheet_name="Investments", index=False)
     output.seek(0)
     return output
 
@@ -435,6 +436,12 @@ if menu == "Export Data":
     cur.execute("SELECT category,monthly_budget FROM budget")
     bud_df = pd.DataFrame(cur.fetchall(), columns=["Category","Monthly Budget"])
 
+    cur.execute("SELECT date, amount, type, invested_by, notes FROM investments")
+    inv_df = pd.DataFrame(
+    cur.fetchall(),
+    columns=["Date", "Amount", "Type", "Invested By", "Notes"])
+
+
     if not exp_df.empty:
         file = export_excel(exp_df, bud_df)
         st.download_button("⬇️ Download Excel", file, "finance_data.xlsx")
@@ -495,6 +502,7 @@ if st.session_state.chat_open:
         st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
