@@ -33,7 +33,7 @@ selected_month = st.sidebar.selectbox(
 # ---------- SIDEBAR MENU ----------
 menu = st.sidebar.selectbox(
     "Menu",
-    ["Dashboard", "Add Expense", "Expenses", "Budget"]
+    ["Add Expense","Dashboard", "Expenses", "Budget"]
 )
 
 # ---------- DASHBOARD ----------
@@ -167,5 +167,6 @@ if menu == "Budget":
             """, (cat, value))
             conn.commit()
             st.success("Saved")
+
 
 
