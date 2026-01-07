@@ -273,7 +273,11 @@ if menu == "Export Data":
 # ======================================================
 # FLOATING CHAT BUTTON
 # ======================================================
+label = "Close Chat" if st.session_state.chat_open else "Chat"
+st.markdown(f'<div class="chat-fab">{label}</div>', unsafe_allow_html=True)
 
+if st.button(label, key="chat_toggle"):
+    st.session_state.chat_open = not st.session_state.chat_open
 
 # ======================================================
 # CHATBOT – AUTO SAVE (FIXED INPUT)
