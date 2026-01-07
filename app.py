@@ -5,6 +5,69 @@ from db import get_connection
 from io import BytesIO
 import re
 
+def generate_monthly_summary(selected_month):
+    # Total spent
+    cur.execute("""
+        SELECT COALESCE(SUM(amount),0)
+        FROM expenses
+        WHERE to_char(date,'YYYY-MM')=%s
+    """, (selected_month,))
+    total_spent = cur.fetchone()[0]
+
+    # Total budget
+    cur.execute("SELECT COALESCE(SUM(monthly_budget),0) FROM budget")
+    total_budget = cur.fetchone()[0]
+
+    # Category-wise spend
+    cur.execute("""
+        SELECT category, SUM(amount)
+        FROM expenses
+        WHERE to_char(date,'YYYY-MM')=%s
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+    """, (selected_month,))
+    cat_data = cur.fetchall()
+
+    top_category = cat_data[0][0] if cat_data else "N/A"
+    top_category_amt = cat_data[0][1] if cat_data else 0
+
+    # Paid by summary
+    cur.execute("""
+        SELECT paid_by, SUM(amount)
+        FROM expenses
+        WHERE to_char(date,'YYYY-MM')=%s
+        GROUP BY paid_by
+    """, (selected_month,))
+    paid_data = cur.fetchall()
+
+    paid_summary = {p: a for p, a in paid_data}
+    max_payer = max(paid_summary, key=paid_summary.get) if paid_summary else "N/A"
+
+    # Savings / overspend
+    diff = total_budget - total_spent
+    status = "saved" if diff >= 0 else "overspent"
+
+    # Human readable summary
+    summary_text = (
+        f"In {selected_month}, you spent ₹{total_spent:.0f} "
+        f"against a budget of ₹{total_budget:.0f}. "
+        f"You {status} ₹{abs(diff):.0f}. "
+        f"Your highest spending category was **{top_category}** "
+        f"(₹{top_category_amt:.0f}). "
+        f"**{max_payer}** spent more this month."
+    )
+
+    return {
+        "total_spent": total_spent,
+        "total_budget": total_budget,
+        "difference": diff,
+        "top_category": top_category,
+        "top_category_amt": top_category_amt,
+        "paid_summary": paid_summary,
+        "summary_text": summary_text
+    }
+
+
 # ======================================================
 # BASIC SETUP
 # ======================================================
@@ -80,7 +143,7 @@ selected_month = st.sidebar.selectbox("📅 Select Month", sorted(months, revers
 # ======================================================
 menu = st.sidebar.selectbox(
     "Menu",
-    [ "Dashboard","Add Expense", "Expenses", "Budget & Categories", "Export Data"]
+    [ "Dashboard","Add Expense","Monthly Summary", "Expenses", "Budget & Categories", "Export Data"]
 )
 
 # ======================================================
@@ -104,6 +167,38 @@ if menu == "Dashboard":
 # ======================================================
 # ADD EXPENSE
 # ======================================================
+
+# ======================================================
+# MONTHLY SUMMARY
+# ======================================================
+if menu == "Monthly Summary":
+    st.header("📅 Monthly Summary")
+
+    summary = generate_monthly_summary(selected_month)
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Spent", f"₹{summary['total_spent']:.0f}")
+    c2.metric("Total Budget", f"₹{summary['total_budget']:.0f}")
+    c3.metric(
+        "Savings / Overspend",
+        f"₹{summary['difference']:.0f}",
+        delta_color="normal" if summary["difference"] >= 0 else "inverse"
+    )
+
+    st.divider()
+
+    st.subheader("📌 Highlights")
+    st.write(f"• **Top Category:** {summary['top_category']} (₹{summary['top_category_amt']:.0f})")
+
+    st.subheader("👤 Spending by Person")
+    for person, amt in summary["paid_summary"].items():
+        st.write(f"• **{person}:** ₹{amt:.0f}")
+
+    st.divider()
+
+    st.subheader("🧠 Smart Summary")
+    st.success(summary["summary_text"])
+
 if menu == "Add Expense":
     st.header("⚡ Quick Add Expense")
 
@@ -287,5 +382,6 @@ if st.session_state.chat_open:
         st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
