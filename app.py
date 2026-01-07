@@ -24,13 +24,14 @@ st.markdown("""
     right: 24px;
     background: #0f62fe;
     color: white;
-    border-radius: 50%;
-    width: 56px;
-    height: 56px;
-    font-size: 26px;
+    border-radius: 30px;
+    padding: 12px 18px;
+    font-size: 15px;
+    font-weight: 600;
     border: none;
     cursor: pointer;
     z-index: 1000;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
 }
 
 /* Chat Panel */
@@ -49,7 +50,7 @@ st.markdown("""
     animation: slideUp 0.35s ease-out;
 }
 
-/* Animations */
+/* Animation */
 @keyframes slideUp {
     from { transform: translateY(120%); opacity: 0; }
     to   { transform: translateY(0); opacity: 1; }
@@ -92,11 +93,16 @@ def parse_expense_text(text, categories, users):
     cat = next((c for c in categories if c.lower() in t), None)
 
     if not cat:
-        if any(x in t for x in ["uber", "ola", "cab", "bus", "train"]): cat = "Travel"
-        elif any(x in t for x in ["food", "pizza", "swiggy", "zomato", "chai"]): cat = "Food"
-        elif any(x in t for x in ["medicine", "doctor", "hospital"]): cat = "Medical"
-        elif any(x in t for x in ["amazon", "flipkart", "shopping"]): cat = "Shopping"
-        else: cat = "Other"
+        if any(x in t for x in ["uber", "ola", "cab", "bus", "train"]):
+            cat = "Travel"
+        elif any(x in t for x in ["food", "pizza", "swiggy", "zomato", "chai"]):
+            cat = "Food"
+        elif any(x in t for x in ["medicine", "doctor", "hospital"]):
+            cat = "Medical"
+        elif any(x in t for x in ["amazon", "flipkart", "shopping"]):
+            cat = "Shopping"
+        else:
+            cat = "Other"
 
     return amt, cat, paid, text
 
@@ -175,9 +181,15 @@ if menu == "Add Expense":
         st.rerun()
 
 # ======================================================
-# FLOATING CHAT TOGGLE
+# FLOATING CHAT TOGGLE (TEXT BUTTON)
 # ======================================================
-if st.button("💬", key="chat_toggle"):
+label = "Close Chat" if st.session_state.chat_open else "Chat"
+
+st.markdown(f"""
+    <div class="chat-fab">{label}</div>
+""", unsafe_allow_html=True)
+
+if st.button(label, key="chat_toggle"):
     st.session_state.chat_open = not st.session_state.chat_open
 
 # ======================================================
@@ -206,7 +218,10 @@ if st.session_state.chat_open:
             )
         else:
             st.session_state.pending_expense = {
-                "amount": amt, "category": cat, "paid_by": paid, "notes": notes
+                "amount": amt,
+                "category": cat,
+                "paid_by": paid,
+                "notes": notes
             }
             st.session_state.chat_messages.append(
                 {"role": "assistant",
