@@ -6,7 +6,9 @@ from io import BytesIO
 import re
 
 def generate_monthly_summary(selected_month):
-    # Total spent
+    # ==============================
+    # TOTAL SPENT (EXPENSES)
+    # ==============================
     cur.execute("""
         SELECT COALESCE(SUM(amount),0)
         FROM expenses
@@ -14,11 +16,28 @@ def generate_monthly_summary(selected_month):
     """, (selected_month,))
     total_spent = cur.fetchone()[0]
 
-    # Total budget
-    cur.execute("SELECT COALESCE(SUM(monthly_budget),0) FROM budget")
+    # ==============================
+    # TOTAL BUDGET
+    # ==============================
+    cur.execute("""
+        SELECT COALESCE(SUM(monthly_budget),0)
+        FROM budget
+    """)
     total_budget = cur.fetchone()[0]
 
-    # Category-wise spend
+    # ==============================
+    # TOTAL INVESTED
+    # ==============================
+    cur.execute("""
+        SELECT COALESCE(SUM(amount),0)
+        FROM investments
+        WHERE to_char(date,'YYYY-MM')=%s
+    """, (selected_month,))
+    total_invested = cur.fetchone()[0]
+
+    # ==============================
+    # CATEGORY-WISE SPEND
+    # ==============================
     cur.execute("""
         SELECT category, SUM(amount)
         FROM expenses
@@ -31,7 +50,9 @@ def generate_monthly_summary(selected_month):
     top_category = cat_data[0][0] if cat_data else "N/A"
     top_category_amt = cat_data[0][1] if cat_data else 0
 
-    # Paid by summary
+    # ==============================
+    # PAID BY SUMMARY (EXPENSES)
+    # ==============================
     cur.execute("""
         SELECT paid_by, SUM(amount)
         FROM expenses
@@ -43,29 +64,59 @@ def generate_monthly_summary(selected_month):
     paid_summary = {p: a for p, a in paid_data}
     max_payer = max(paid_summary, key=paid_summary.get) if paid_summary else "N/A"
 
-    # Savings / overspend
+    # ==============================
+    # INVESTMENT BY PERSON
+    # ==============================
+    cur.execute("""
+        SELECT invested_by, SUM(amount)
+        FROM investments
+        WHERE to_char(date,'YYYY-MM')=%s
+        GROUP BY invested_by
+    """, (selected_month,))
+    inv_data = cur.fetchall()
+
+    investment_summary = {p: a for p, a in inv_data}
+
+    # ==============================
+    # SAVINGS / OVERSPEND
+    # ==============================
     diff = total_budget - total_spent
     status = "saved" if diff >= 0 else "overspent"
 
-    # Human readable summary
+    # ==============================
+    # SMART HUMAN SUMMARY
+    # ==============================
     summary_text = (
         f"In {selected_month}, you spent ₹{total_spent:.0f} "
         f"against a budget of ₹{total_budget:.0f}. "
         f"You {status} ₹{abs(diff):.0f}. "
-        f"Your highest spending category was **{top_category}** "
-        f"(₹{top_category_amt:.0f}). "
-        f"**{max_payer}** spent more this month."
+        f"You also invested ₹{total_invested:.0f} this month. "
     )
 
+    if top_category != "N/A":
+        summary_text += (
+            f"Your highest spending category was **{top_category}** "
+            f"(₹{top_category_amt:.0f}). "
+        )
+
+    if max_payer != "N/A":
+        summary_text += f"**{max_payer}** spent more on expenses this month."
+
+    # ==============================
+    # RETURN OBJECT
+    # ==============================
     return {
         "total_spent": total_spent,
         "total_budget": total_budget,
         "difference": diff,
+        "total_invested": total_invested,
         "top_category": top_category,
         "top_category_amt": top_category_amt,
         "paid_summary": paid_summary,
+        "investment_summary": investment_summary,
         "summary_text": summary_text
     }
+
 
 
 # ======================================================
@@ -143,8 +194,18 @@ selected_month = st.sidebar.selectbox("📅 Select Month", sorted(months, revers
 # ======================================================
 menu = st.sidebar.selectbox(
     "Menu",
-    [ "Dashboard","Add Expense","Monthly Summary", "Expenses", "Budget & Categories", "Export Data"]
+    [
+        "Dashboard",
+        "Monthly Summary",
+        "Add Expense",
+        "Add Investment",
+        "Expenses",
+        "Investments",
+        "Budget & Categories",
+        "Export Data"
+    ]
 )
+
 
 # ======================================================
 # DASHBOARD
@@ -167,6 +228,58 @@ if menu == "Dashboard":
 # ======================================================
 # ADD EXPENSE
 # ======================================================
+# ======================================================
+# ADD INVESTMENT
+# ======================================================
+if menu == "Add Investment":
+    st.header("📈 Add Investment")
+
+    inv_amount = st.number_input("Investment Amount (₹)", min_value=1.0)
+
+    inv_type = st.selectbox(
+        "Investment Type",
+        ["SIP", "Mutual Fund", "Stocks", "FD", "RD", "PPF", "Crypto", "Other"]
+    )
+
+    invested_by = st.radio("Invested By", USERS, horizontal=True)
+    inv_note = st.text_input("Notes (optional)")
+
+    if st.button("💾 Save Investment"):
+        cur.execute("""
+            INSERT INTO investments(date, amount, type, invested_by, notes)
+            VALUES(%s,%s,%s,%s,%s)
+        """, (today, inv_amount, inv_type, invested_by, inv_note))
+        conn.commit()
+        st.success("Investment added")
+        st.rerun()
+# ======================================================
+# INVESTMENT LIST
+# ======================================================
+if menu == "Investments":
+    st.header("📊 Investments")
+
+    cur.execute("""
+        SELECT id, date, amount, type, invested_by, notes
+        FROM investments
+        WHERE to_char(date,'YYYY-MM')=%s
+        ORDER BY date DESC
+    """, (selected_month,))
+    rows = cur.fetchall()
+
+    if not rows:
+        st.info("No investments this month")
+    else:
+        for r in rows:
+            iid, d, amt, t, by, note = r
+            with st.expander(f"₹{amt} | {t} | {d}"):
+                st.write(f"**Invested By:** {by}")
+                st.write(f"**Notes:** {note or '-'}")
+
+                if st.button("🗑️ Delete", key=f"del_inv_{iid}"):
+                    cur.execute("DELETE FROM investments WHERE id=%s", (iid,))
+                    conn.commit()
+                    st.warning("Investment deleted")
+                    st.rerun()
 
 # ======================================================
 # MONTHLY SUMMARY
@@ -382,6 +495,7 @@ if st.session_state.chat_open:
         st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
