@@ -11,7 +11,7 @@ import re
 st.set_page_config(page_title="Couple Finance App", layout="centered")
 
 # ======================================================
-# UI + CHAT ANIMATION STYLES
+# UI + CHAT STYLES
 # ======================================================
 st.markdown("""
 <style>
@@ -50,7 +50,6 @@ st.markdown("""
     animation: slideUp 0.35s ease-out;
 }
 
-/* Animation */
 @keyframes slideUp {
     from { transform: translateY(120%); opacity: 0; }
     to   { transform: translateY(0); opacity: 1; }
@@ -93,16 +92,11 @@ def parse_expense_text(text, categories, users):
     cat = next((c for c in categories if c.lower() in t), None)
 
     if not cat:
-        if any(x in t for x in ["uber", "ola", "cab", "bus", "train"]):
-            cat = "Travel"
-        elif any(x in t for x in ["food", "pizza", "swiggy", "zomato", "chai"]):
-            cat = "Food"
-        elif any(x in t for x in ["medicine", "doctor", "hospital"]):
-            cat = "Medical"
-        elif any(x in t for x in ["amazon", "flipkart", "shopping"]):
-            cat = "Shopping"
-        else:
-            cat = "Other"
+        if any(x in t for x in ["uber", "ola", "cab", "bus", "train"]): cat = "Travel"
+        elif any(x in t for x in ["food", "pizza", "swiggy", "zomato", "chai"]): cat = "Food"
+        elif any(x in t for x in ["medicine", "doctor", "hospital"]): cat = "Medical"
+        elif any(x in t for x in ["amazon", "flipkart", "shopping"]): cat = "Shopping"
+        else: cat = "Other"
 
     return amt, cat, paid, text
 
@@ -145,6 +139,7 @@ if menu == "Dashboard":
         (selected_month,)
     )
     spent = cur.fetchone()[0]
+
     cur.execute("SELECT COALESCE(SUM(monthly_budget),0) FROM budget")
     budget = cur.fetchone()[0]
 
@@ -181,13 +176,80 @@ if menu == "Add Expense":
         st.rerun()
 
 # ======================================================
+# EXPENSE LIST
+# ======================================================
+if menu == "Expenses":
+    st.header("📋 Expense List")
+
+    cur.execute("""
+        SELECT id,date,amount,category,paid_by,notes
+        FROM expenses
+        WHERE to_char(date,'YYYY-MM')=%s
+        ORDER BY date DESC
+    """, (selected_month,))
+    rows = cur.fetchall()
+
+    if not rows:
+        st.info("No expenses found")
+    else:
+        for r in rows:
+            st.write(r)
+
+# ======================================================
+# BUDGET
+# ======================================================
+if menu == "Budget":
+    st.header("🎯 Monthly Budget")
+
+    for cat in get_categories():
+        cur.execute("SELECT monthly_budget FROM budget WHERE category=%s", (cat,))
+        row = cur.fetchone()
+        value = row[0] if row else 0.0
+
+        new_val = st.number_input(cat, value=float(value), key=f"b_{cat}")
+        if st.button(f"Save {cat}", key=f"save_{cat}"):
+            cur.execute("""
+                INSERT INTO budget(category,monthly_budget)
+                VALUES(%s,%s)
+                ON CONFLICT(category) DO UPDATE
+                SET monthly_budget=EXCLUDED.monthly_budget
+            """, (cat, new_val))
+            conn.commit()
+            st.success("Saved")
+
+# ======================================================
+# EXPORT DATA
+# ======================================================
+if menu == "Export Data":
+    cur.execute("SELECT date,amount,category,paid_by,notes FROM expenses")
+    expenses_df = pd.DataFrame(
+        cur.fetchall(),
+        columns=["Date","Amount","Category","Paid By","Notes"]
+    )
+
+    cur.execute("SELECT category,monthly_budget FROM budget")
+    budget_df = pd.DataFrame(
+        cur.fetchall(),
+        columns=["Category","Monthly Budget"]
+    )
+
+    if not expenses_df.empty or not budget_df.empty:
+        file = export_excel(expenses_df, budget_df)
+        st.download_button(
+            "⬇️ Download Excel",
+            file,
+            "couple_finance_data.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        st.info("No data to export")
+
+# ======================================================
 # FLOATING CHAT TOGGLE (TEXT BUTTON)
 # ======================================================
 label = "Close Chat" if st.session_state.chat_open else "Chat"
 
-st.markdown(f"""
-    <div class="chat-fab">{label}</div>
-""", unsafe_allow_html=True)
+st.markdown(f'<div class="chat-fab">{label}</div>', unsafe_allow_html=True)
 
 if st.button(label, key="chat_toggle"):
     st.session_state.chat_open = not st.session_state.chat_open
@@ -218,10 +280,7 @@ if st.session_state.chat_open:
             )
         else:
             st.session_state.pending_expense = {
-                "amount": amt,
-                "category": cat,
-                "paid_by": paid,
-                "notes": notes
+                "amount": amt, "category": cat, "paid_by": paid, "notes": notes
             }
             st.session_state.chat_messages.append(
                 {"role": "assistant",
