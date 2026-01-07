@@ -17,7 +17,6 @@ st.markdown("""
 <style>
 [data-testid="stSidebar"] { min-width: 200px; }
 
-/* Floating Chat Button */
 .chat-fab {
     position: fixed;
     bottom: 24px;
@@ -33,7 +32,6 @@ st.markdown("""
     box-shadow: 0 8px 20px rgba(0,0,0,0.25);
 }
 
-/* Chat Panel */
 .chat-panel {
     position: fixed;
     bottom: 90px;
@@ -85,7 +83,6 @@ def export_excel(exp_df, bud_df):
 
 def parse_expense_text(text, categories, users):
     t = text.lower()
-
     amount = float(re.search(r'\b(\d+)\b', t).group(1)) if re.search(r'\b(\d+)\b', t) else None
     paid_by = next((u for u in users if u.lower() in t), None)
 
@@ -100,7 +97,7 @@ def parse_expense_text(text, categories, users):
     return amount, category, paid_by, text
 
 # ======================================================
-# CHAT STATE
+# SESSION STATE
 # ======================================================
 st.session_state.setdefault("chat_open", False)
 st.session_state.setdefault("chat_messages", [])
@@ -122,7 +119,7 @@ selected_month = st.sidebar.selectbox("📅 Select Month", sorted(months, revers
 # ======================================================
 menu = st.sidebar.selectbox(
     "Menu",
-    ["Add Expense", "Dashboard", "Expenses", "Budget", "Export Data"]
+    ["Add Expense", "Dashboard", "Expenses", "Budget & Categories", "Export Data"]
 )
 
 # ======================================================
@@ -136,15 +133,15 @@ if menu == "Dashboard":
     spent = cur.fetchone()[0]
 
     cur.execute("SELECT COALESCE(SUM(monthly_budget),0) FROM budget")
-    budget = cur.fetchone()[0]
+    total_budget = cur.fetchone()[0]
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Total Spent", f"₹{spent:.0f}")
-    c2.metric("Monthly Budget", f"₹{budget:.0f}")
-    c3.metric("Remaining", f"₹{budget-spent:.0f}", delta_color="inverse")
+    c2.metric("Total Budget", f"₹{total_budget:.0f}")
+    c3.metric("Remaining", f"₹{total_budget - spent:.0f}", delta_color="inverse")
 
 # ======================================================
-# ADD EXPENSE (FORM)
+# ADD EXPENSE
 # ======================================================
 if menu == "Add Expense":
     st.header("⚡ Quick Add Expense")
@@ -172,7 +169,7 @@ if menu == "Add Expense":
         st.rerun()
 
 # ======================================================
-# EXPENSE LIST (PROPER UI)
+# EXPENSE LIST (EDIT / DELETE)
 # ======================================================
 if menu == "Expenses":
     st.header("📋 Expense List")
@@ -217,33 +214,56 @@ if menu == "Expenses":
                         st.rerun()
 
 # ======================================================
-# BUDGET
+# BUDGET + CATEGORY MANAGEMENT (CUSTOMIZABLE)
 # ======================================================
-if menu == "Budget":
-    st.header("🎯 Monthly Budget")
+if menu == "Budget & Categories":
+    st.header("🎯 Monthly Budget (Customizable)")
 
-    for cat in get_categories():
+    categories = get_categories()
+
+    for cat in categories:
         cur.execute("SELECT monthly_budget FROM budget WHERE category=%s", (cat,))
         row = cur.fetchone()
-        val = row[0] if row else 0.0
+        value = row[0] if row else 0.0
 
-        amt = st.number_input(cat, value=float(val), key=f"bud_{cat}")
-        if st.button(f"Save {cat}", key=f"s_{cat}"):
+        amt = st.number_input(f"{cat} Budget (₹)", value=float(value), key=f"bud_{cat}")
+        if st.button(f"Save {cat}", key=f"save_{cat}"):
             cur.execute("""
                 INSERT INTO budget(category,monthly_budget)
                 VALUES(%s,%s)
-                ON CONFLICT(category) DO UPDATE
-                SET monthly_budget=EXCLUDED.monthly_budget
+                ON CONFLICT(category)
+                DO UPDATE SET monthly_budget=EXCLUDED.monthly_budget
             """, (cat, amt))
             conn.commit()
-            st.success("Saved")
+            st.success(f"{cat} saved")
+
+    st.divider()
+    st.subheader("🛠️ Manage Categories")
+
+    new_cat = st.text_input("Add new category")
+    if st.button("➕ Add Category") and new_cat:
+        try:
+            cur.execute("INSERT INTO categories(name) VALUES(%s)", (new_cat,))
+            conn.commit()
+            st.success("Category added")
+            st.rerun()
+        except:
+            st.warning("Category already exists")
+
+    del_cat = st.selectbox("Delete category", categories)
+    if st.button("🗑️ Delete Category"):
+        cur.execute("DELETE FROM categories WHERE name=%s", (del_cat,))
+        conn.commit()
+        st.warning("Category deleted")
+        st.rerun()
 
 # ======================================================
-# EXPORT
+# EXPORT DATA
 # ======================================================
 if menu == "Export Data":
     cur.execute("SELECT date,amount,category,paid_by,notes FROM expenses")
     exp_df = pd.DataFrame(cur.fetchall(), columns=["Date","Amount","Category","Paid By","Notes"])
+
     cur.execute("SELECT category,monthly_budget FROM budget")
     bud_df = pd.DataFrame(cur.fetchall(), columns=["Category","Monthly Budget"])
 
@@ -261,7 +281,7 @@ if st.button(label, key="chat_toggle"):
     st.session_state.chat_open = not st.session_state.chat_open
 
 # ======================================================
-# CHATBOT (AUTO SAVE – NO CONFIRMATION)
+# CHATBOT – AUTO SAVE
 # ======================================================
 if st.session_state.chat_open:
     st.markdown('<div class="chat-panel">', unsafe_allow_html=True)
@@ -284,7 +304,7 @@ if st.session_state.chat_open:
         if not amt or not paid:
             st.session_state.chat_messages.append({
                 "role":"assistant",
-                "content":"❌ Couldn't understand. Please include amount & who paid."
+                "content":"❌ Please include amount & who paid"
             })
         else:
             cur.execute("""
