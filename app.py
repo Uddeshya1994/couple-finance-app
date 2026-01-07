@@ -13,46 +13,7 @@ st.set_page_config(page_title="Couple Finance App", layout="centered")
 # ======================================================
 # UI + CHAT STYLES
 # ======================================================
-st.markdown("""
-<style>
-[data-testid="stSidebar"] { min-width: 200px; }
 
-.chat-fab {
-    position: fixed;
-    bottom: 24px;
-    right: 24px;
-    background: #0f62fe;
-    color: white;
-    border-radius: 30px;
-    padding: 12px 18px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    z-index: 1000;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
-}
-
-.chat-panel {
-    position: fixed;
-    bottom: 90px;
-    right: 20px;
-    width: 360px;
-    max-height: 420px;
-    background: white;
-    border-radius: 14px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.25);
-    padding: 12px;
-    overflow-y: auto;
-    z-index: 999;
-    animation: slideUp 0.3s ease-out;
-}
-
-@keyframes slideUp {
-    from { transform: translateY(120%); opacity: 0; }
-    to   { transform: translateY(0); opacity: 1; }
-}
-</style>
-""", unsafe_allow_html=True)
 
 # ======================================================
 # DB CONNECTION
@@ -326,3 +287,4 @@ if st.session_state.chat_open:
         st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
+
