@@ -80,7 +80,7 @@ selected_month = st.sidebar.selectbox("📅 Select Month", sorted(months, revers
 # ======================================================
 menu = st.sidebar.selectbox(
     "Menu",
-    ["Add Expense", "Dashboard", "Expenses", "Budget & Categories", "Export Data"]
+    [ "Dashboard","Add Expense", "Expenses", "Budget & Categories", "Export Data"]
 )
 
 # ======================================================
@@ -287,4 +287,5 @@ if st.session_state.chat_open:
         st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
