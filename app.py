@@ -1,3 +1,12 @@
+import streamlit as st
+from datetime import date
+import pandas as pd
+from db import get_connection
+
+# ---------- BASIC SETUP ----------
+st.set_page_config(page_title="Couple Finance App", layout="centered")
+
+# ---------- UI TWEAKS ----------
 st.markdown("""
     <style>
         [data-testid="stSidebar"] {
@@ -6,19 +15,12 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# ---------- DB CONNECTION ----------
+@st.cache_resource
+def get_db():
+    return get_connection()
 
-import streamlit as st
-from datetime import date
-import pandas as pd
-from db import get_connection
-import streamlit as st
-
-
-
-# ---------- BASIC SETUP ----------
-st.set_page_config(page_title="Couple Finance App", layout="centered")
-
-conn = get_connection()
+conn = get_db()
 cur = conn.cursor()
 
 USERS = ["Uddeshya", "Megha"]
@@ -177,6 +179,7 @@ if menu == "Budget":
             """, (cat, value))
             conn.commit()
             st.success("Saved")
+
 
 
 
