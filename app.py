@@ -3,6 +3,45 @@ from datetime import date
 import pandas as pd
 from db import get_connection
 from io import BytesIO
+import re
+
+def parse_expense_text(text, categories, users):
+    text = text.lower()
+
+    # Amount
+    amount_match = re.search(r'\b(\d+)\b', text)
+    amount = float(amount_match.group(1)) if amount_match else None
+
+    # Paid by
+    paid_by = None
+    for user in users:
+        if user.lower() in text:
+            paid_by = user
+            break
+
+    # Category
+    category = None
+    for cat in categories:
+        if cat.lower() in text:
+            category = cat
+            break
+
+    # Fallback keyword-based category
+    if not category:
+        if any(x in text for x in ["uber", "ola", "bus", "train", "cab"]):
+            category = "Travel"
+        elif any(x in text for x in ["food", "pizza", "swiggy", "zomato"]):
+            category = "Food"
+        elif any(x in text for x in ["medicine", "doctor", "hospital"]):
+            category = "Medical"
+        else:
+            category = "Other"
+
+    # Notes
+    notes = text
+
+    return amount, category, paid_by, notes
+
 
 # ---------- BASIC SETUP ----------
 st.set_page_config(page_title="Couple Finance App", layout="centered")
@@ -58,7 +97,7 @@ selected_month = st.sidebar.selectbox(
 # ---------- SIDEBAR MENU ----------
 menu = st.sidebar.selectbox(
     "Menu",
-    ["Add Expense", "Dashboard", "Expenses", "Budget", "Export Data"]
+    ["Add Expense", "Dashboard", "Expenses", "Budget","AI Chat", "Export Data"]
 )
 
 # ======================================================
@@ -279,3 +318,39 @@ if menu == "Export Data":
             file_name="couple_finance_all_data.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+# ======================================================
+# 🤖 AI CHAT – ADD EXPENSE
+# ======================================================
+if menu == "AI Chat":
+    st.header("🤖 Chat to Add Expense")
+    st.write("Type naturally like WhatsApp:")
+
+    st.code("Spent 450 on uber paid by Megha")
+
+    user_text = st.text_input("💬 Your message")
+
+    if st.button("➕ Add via Chat"):
+        categories = get_categories()
+
+        amount, category, paid_by, notes = parse_expense_text(
+            user_text, categories, USERS
+        )
+
+        if not amount:
+            st.error("❌ Couldn't detect amount")
+        elif not paid_by:
+            st.error("❌ Couldn't detect who paid")
+        else:
+            cur.execute("""
+                INSERT INTO expenses (date, amount, category, paid_by, notes)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (date.today(), amount, category, paid_by, notes))
+            conn.commit()
+
+            st.success(
+                f"✅ Added ₹{amount} | {category} | Paid by {paid_by}"
+            )
+            st.rerun()
+
+
